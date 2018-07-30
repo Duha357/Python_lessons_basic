@@ -125,7 +125,7 @@ OpenWeatherMap — онлайн-сервис, который предостав�
 
 import requests
 import sqlite3
-import os
+import sys
 
 a = open("app.id")
 my_app_id = a.read().splitlines()
@@ -134,28 +134,59 @@ city = input("Пожалуйста введите город на английс
 data_list = {"q": city, "appid": my_app_id, "units": "metric"}
 a.close()
 
-inquiry = requests.get(api_url, params = data_list) #Отправим запрос на получение данных
+try: #Проверим, есть ли город в базе
+    inquiry = requests.get(api_url, params=data_list) #Отправим запрос на получение данных
+    data = inquiry.json() #Сохраним полученные данные
+    conclusion = "Температура в городе {} сейчас {} градус(ов)"
+    print(conclusion.format(data["name"], data["main"]["temp"])) #Вытаскиваем градусы из данных
+except:
+    sys.exit("Такого города нет в базе!")
 
-data = inquiry.json() #Сохраним полученные данные
-conclusion = "Температура в городе {} сейчас {} градус(ов)"
-print(conclusion.format(city, data["main"]["temp"])) #Вытаскиваем градусы из данных
 save_data = input("Хотите сохранить данные в SQLite? y/n: ")
 if save_data == "y" or "Y":
-    weather = [(data["sys"]["id"], city, data["dt"], data["main"]["temp"], data["main"]["temp"])] #Записываем необходимые данные
-    connect = sqlite3.connect("{}.db".format(city))
+    weather = [(data["id"], data["name"], data["dt"], data["main"]["temp"], data["weather"][0]["id"])] #Записываем необходимые данные
+    connect = sqlite3.connect("cities.db")
     c = connect.cursor()
-    if os.path.isfile("{}.db".format(city)): #Если БД уже есть - обновляем
-        c.execute("""REPLACE INTO weather (id_города, Город, Дата, Температура, id_погоды) VALUES (?, ?, ?, ?, ?)""", (data["sys"]["id"], city, data["dt"], data["main"]["temp"], data["main"]["temp"]))  # Обновляем значения в БД
-        connect.commit()  # UPDATE weather SET id_города=?, Город=?, Дата=?, Температура=?, id_погоды=? WHERE ?
-        c.close()
-        connect.close()
-        print("Такая база уже существует. Мы её обновили!")
-    else: #Если БД ещё нет - создаём
-        c.execute('''CREATE TABLE weather (id_города INTEGER PRIMARY KEY, Город VARCHAR(255), Дата DATE, Температура INTEGER, id_погоды INTEGER)''')
-        c.executemany("INSERT INTO weather VALUES (?, ?, ?, ?, ?)", weather)  # Добавляем значения в БД
-        connect.commit()
-        c.close()
-        connect.close()
-        print("База данных {}.db создана!".format(city))
+    c.execute(
+        """CREATE TABLE IF NOT EXISTS {} (id_города INTEGER PRIMARY KEY, Город VARCHAR(255), Дата DATE, Температура INTEGER, id_погоды INTEGER)""".format(
+            data["name"]))
+    c.executemany("INSERT OR REPLACE INTO {} VALUES (?, ?, ?, ?, ?)".format(data["name"]), weather)  # Добавляем значения в БД
+    connect.commit()
+    c.close()
+    connect.close()
+    print("Город в базе данных cities.db создан!")
 else:
-    print("Хорошо, создавать БД не будем. Приятного дня!")
+    print("Хорошо, создавать БД не будем.")
+
+question = input("Мы также можем загрузить погоду в городах выбранной страны. Загрузить? y/n: ")
+if question == "y" or "Y":
+    question_2 = input("Введите пожалуйста код страны, например RU, UA, ... : ")
+    if "country" == question_2: #Поиск городов по коду
+
+        #ЭТОТ КУСОК КОДА МНЕ НЕ УДАЛОСЬ ЗАСТАВИТЬ РАБОТАТЬ
+
+        id_save = ["id"]
+        data_list_2 = {"id": id_save, "appid": my_app_id, "units": "metric"}
+        inquiry_2 = requests.get(api_url, params=data_list_2)  # Отправим запрос на получение данных
+        q = requests.get("city.list.json")
+        data_2 = inquiry_2.json()  # Сохраним полученные данные
+        q_2 = q.json()
+        connect = sqlite3.connect("cities.db")
+        c = connect.cursor()
+        for i in q_2:
+            weather_2 = [(data_2["id"], data_2["name"], data_2["dt"], data_2["main"]["temp"],
+                          data_2["weather"][0]["id"])]  # Записываем необходимые данные
+            c.execute(
+                """CREATE TABLE IF NOT EXISTS {} (id_города INTEGER PRIMARY KEY, Город VARCHAR(255), Дата DATE, Температура INTEGER, id_погоды INTEGER)""".format(
+                    data_2["name"]))
+            c.executemany("INSERT OR REPLACE INTO {} VALUES (?, ?, ?, ?, ?)".format(data_2["name"]),
+                          weather_2)  # Добавляем значения в БД
+            connect.commit()
+        c.close()
+        connect.close()
+        print("База данных обновлена!")
+    else: #Если город не подходит - пропускаем
+        pass
+    print("Все данные с кодом страны {} загружены!".format(question_2))
+else:
+    print("Хорошо, загружать погоду не будем. Приятного дня!")
